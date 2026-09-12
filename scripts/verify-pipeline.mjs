@@ -12,8 +12,10 @@ const state = globalThis.__indexTest;
 export class TFile { constructor(path, content) { this.path=path; this.extension='md'; this.content=content; this.stat={mtime:1}; } }
 export class FileSystemAdapter { getBasePath() { return '/vault'; } }
 export class Notice { constructor(text) { state.notices.push(text); } setMessage() {} hide() {} }
+export class ItemView {}
 export class Plugin {
   manifest={id:'plugin_experiment'};
+  registerView() {} addRibbonIcon() {}
   registerEvent() {} addCommand(command) { this.command=command; }
   async loadData() { return state.saved; }
   async saveData(value) { state.saved=JSON.parse(JSON.stringify(value)); }
@@ -41,7 +43,7 @@ try {
   const vault = { adapter: new FileSystemAdapter(), configDir:'.obsidian',
     getMarkdownFiles: () => [...files.values()], getAbstractFileByPath: path => files.get(path),
     read: async file => file.content, on: (name, fn) => handlers.set(name, fn) };
-  const start = async () => { const plugin=new Pipeline(); plugin.app={vault}; await plugin.onload(); await plugin.queue; return plugin; };
+  const start = async () => { const plugin=new Pipeline(); plugin.app={vault,workspace:{onLayoutReady() {},getLeavesOfType:()=>[]}}; await plugin.onload(); await plugin.queue; return plugin; };
   const emit = async (plugin, name, file) => { handlers.get(name)(file); await plugin.queue; };
   const first = new TFile('first.md','first content'); files.set(first.path,first);
   let plugin = await start();
@@ -57,6 +59,20 @@ try {
   files.delete('second.md'); second.path='renamed.md'; files.set(second.path,second);
   await emit(plugin,'rename',second); assert(!plugin.index.get('second.md')); assert(plugin.index.get('renamed.md'));
   files.delete(second.path); await emit(plugin,'delete',second); assert.equal(plugin.index.size,1);
+  for (let i=0;i<7;i++) {
+    const note=new TFile(`related-${i}.md`,`related content ${i}`); files.set(note.path,note);
+    await emit(plugin,'create',note);
+  }
+  const cachedCalls=state.calls;
+  const related=await plugin.relatedNotes(first);
+  assert.equal(related.length,5,'panel receives five other notes');
+  assert(related.every(note=>note.path!==first.path),'active note excluded');
+  assert.equal(state.calls,cachedCalls,'related notes reuse current cached embedding');
+  first.content='new content before modify event';
+  await plugin.relatedNotes(first);
+  assert.equal(state.calls,cachedCalls+1,'related notes validate content hash');
+  for (const [path,note] of files) if (note!==first) { files.delete(path); await emit(plugin,'delete',note); }
+  assert.deepEqual(await plugin.relatedNotes(first),[],'single note has no related notes');
   const before=state.calls; plugin.command.callback(); await plugin.queue;
   assert.equal(state.calls,before+1,'rebuild forces embedding');
   state.duringEmbed=()=>{ files.delete(first.path); handlers.get('delete')(first); state.duringEmbed=undefined; };

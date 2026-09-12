@@ -2,13 +2,15 @@ import { FileSystemAdapter, Notice, Plugin, TFile } from "obsidian";
 import { createHash } from "crypto";
 import { join } from "path";
 import { configureEmbeddings, DIMENSIONS, disposeEmbeddings, embed, INDEX_MODEL } from "./src/embeddings";
-import { VectorStore } from "./src/index";
+import { VectorStore, type SimilarNote } from "./src/index";
+import { RELATED_NOTES_VIEW, RelatedNotesView } from "./src/related-notes-view";
 
 const NAME = "Find, Don't Search";
 const CACHE_VERSION = 1;
 
 export default class PluginExperiment extends Plugin {
   readonly index = new VectorStore(DIMENSIONS);
+  indexStatus: "loading" | "ready" | "error" = "loading";
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
   private notice?: Notice;
@@ -20,6 +22,12 @@ export default class PluginExperiment extends Plugin {
     if (!(adapter instanceof FileSystemAdapter)) throw new Error(`${NAME} requires a desktop vault.`);
     configureEmbeddings(join(adapter.getBasePath(), this.manifest.dir ??
       `${this.app.vault.configDir}/plugins/${this.manifest.id}`), message => this.report(message));
+    this.registerView(RELATED_NOTES_VIEW, leaf => new RelatedNotesView(leaf, this));
+    this.addRibbonIcon("links-coming-in", "Find, Don't Search: Open related notes", () => { void this.openRelatedNotes(); });
+    // Obsidian prefixes command names with the plugin display name.
+    this.addCommand({ id: "open-related-notes", name: "Open related notes", callback: () => { void this.openRelatedNotes(); } });
+    // registerView lets Obsidian restore saved leaves; do not create a panel if it was closed.
+    this.app.workspace.onLayoutReady(() => { if (!this.stopped) this.refreshRelatedNotes(); });
     // Queue initialization before registering events so edits during startup are replayed afterwards.
     this.enqueue(async () => {
       const loaded: unknown = await this.loadData().catch((error: unknown) => {
@@ -58,11 +66,47 @@ export default class PluginExperiment extends Plugin {
 
   private enqueue(work: () => Promise<void>): void {
     this.queue = this.queue.then(async () => {
-      if (!this.stopped) await work();
+      if (!this.stopped) { await work(); this.indexStatus = "ready"; }
     }).catch((error: unknown) => {
+      this.indexStatus = "error";
       console.error(`${NAME}: indexing failed`, error);
       if (!this.stopped) new Notice(`${NAME}: indexing failed. Check local model assets and the console.`, 10000);
-    }).finally(() => { this.notice?.hide(); this.notice = undefined; });
+    }).finally(() => { this.notice?.hide(); this.notice = undefined; this.refreshRelatedNotes(); });
+  }
+
+  private async openRelatedNotes(): Promise<void> {
+    const workspace = this.app.workspace;
+    let leaf = workspace.getLeavesOfType(RELATED_NOTES_VIEW)[0];
+    if (!leaf) {
+      const rightLeaf = workspace.getRightLeaf(false);
+      if (!rightLeaf) return;
+      leaf = rightLeaf;
+      await leaf.setViewState({ type: RELATED_NOTES_VIEW, active: true });
+    }
+    await workspace.revealLeaf(leaf);
+  }
+
+  private refreshRelatedNotes(): void {
+    if (this.stopped) return;
+    for (const leaf of this.app.workspace.getLeavesOfType(RELATED_NOTES_VIEW)) {
+      if (leaf.view instanceof RelatedNotesView) void leaf.view.refresh();
+    }
+  }
+
+  /** Share the indexing queue so inference cannot overlap with updates or disposal. */
+  async relatedNotes(file: TFile): Promise<SimilarNote[]> {
+    let results: SimilarNote[] = [];
+    const work = this.queue.then(async () => {
+      if (this.stopped) return;
+      if (!await this.updateNote(file)) return;
+      await this.persist();
+      const entry = this.index.get(file.path);
+      if (entry) results = this.index.searchSimilar(entry.embedding, 6)
+        .filter(note => note.path !== file.path).slice(0, 5);
+    });
+    this.queue = work.catch(() => {});
+    await work;
+    return results;
   }
 
   private report(message: string): void {

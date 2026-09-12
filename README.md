@@ -2,9 +2,10 @@
 
 **Find. Don't Search.**
 
-Milestone 2 implements offline note indexing: local MiniLM embeddings, cosine
-similarity, persistence, and incremental vault updates. The plugin id remains
-`plugin_experiment`. Related notes and search UI are later milestones.
+Milestone 3 adds **Found for you**: related notes surfaced as you move through
+your vault, backed by offline MiniLM embeddings and a persistent incremental
+index. The plugin id remains `plugin_experiment`. Search and adaptive ranking
+remain later milestones.
 See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Build and prepare offline assets
@@ -83,3 +84,24 @@ These checks do not replace loading the plugin in desktop Obsidian.
 critical) in the requested Transformers.js 2.x dependency tree. The bundle
 excludes sharp and native ONNX; this does not resolve all dependency advisories.
 No automatic breaking dependency upgrades are applied.
+
+## Verify related notes (Milestone 3)
+
+1. Open the panel using the ribbon icon or **Find, Don't Search: Open related
+   notes**. Confirm **Found for you** appears in the right sidebar.
+2. Open a Markdown note among at least seven notes. Confirm at most five other
+   notes appear, ordered by similarity, with titles and subtle percentages.
+   Click a title to open it; confirm suggestions follow the newly opened note.
+3. Switch notes quickly during indexing and after startup. Confirm only the
+   current note's connections appear and startup's friendly waiting state
+   updates automatically when indexing finishes.
+4. Edit, rename, or delete notes and confirm suggestions update after indexing.
+   Test an empty vault, a single note, and no active Markdown file for friendly
+   empty states. Missing model assets should show recovery guidance.
+5. Restart Obsidian with the panel open and confirm the workspace restores it.
+   Close it, restart again, and confirm it stays closed. Repeatedly invoke the
+   command and confirm it reveals the existing panel without duplicates.
+
+The panel reuses hash-validated embeddings through the existing indexing queue;
+similarity percentages are cosine scores, not confidence estimates. No click
+history is recorded. Desktop UI checks above require manual verification.
