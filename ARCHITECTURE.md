@@ -212,6 +212,73 @@ plugin_experiment/
   and confirm the previously-clicked note now ranks at or near the top even
   when another note has marginally higher raw cosine similarity.
 
+## Milestone 6 implementation decisions
+
+- New file `src/settings.ts`: exports `PluginSettings` interface
+  `{ topN: number; adaptiveBoostEnabled: boolean }`, a `SETTINGS_VERSION = 1`
+  constant, `DEFAULT_SETTINGS: PluginSettings = { topN: 5, adaptiveBoostEnabled: true }`,
+  and a `FindDontSearchSettingTab extends PluginSettingTab` class. Follow
+  `adaptive.ts`'s pattern for a `sanitizeSettings(value: unknown): PluginSettings`
+  function that rejects malformed/out-of-range input field-by-field and falls
+  back to the matching default per field (not all-or-nothing), so a corrupt or
+  hand-edited `data.json` degrades gracefully instead of throwing.
+- `topN` replaces both hardcoded limits: `RelatedNotesView`'s panel size
+  (currently hardcoded 5 in `main.ts#relatedNotes`'s `rank(..., 5)`) and
+  `SearchModal`'s result count (currently hardcoded 10 via `this.limit = 10`
+  and `rank(..., 10)` in `search-modal.ts#find`). Valid range 3–15 inclusive
+  (below 3 the related-notes panel feels empty; above 15 it stops being
+  "surfaced for you" and becomes a full search results page). Both call
+  sites already over-fetch a fixed 20 candidates from `VectorStore
+  .searchSimilar` before ranking/slicing — bump that over-fetch to
+  `Math.max(20, topN * 4)` so a boosted note outside the raw top-20 cosine
+  matches can still surface when `topN` is set high.
+- `adaptiveBoostEnabled` gates the boost term in `adaptive.ts#rank`: add an
+  `enabled: boolean` parameter (default `true` to keep existing call sites
+  compiling without churn, but both real call sites in `main.ts` and
+  `search-modal.ts` now pass `this.plugin.settings.adaptiveBoostEnabled`
+  explicitly). When `false`, `rank` must skip calling `tracker.boost` entirely
+  (not just multiply by zero) — this is also a cheap perf win and makes the
+  toggle's effect unambiguous in the score math for future readers.
+- Persistence: add `this.plugin.settings: PluginSettings` to `main.ts`,
+  loaded/restored alongside `index`/`clicks` in the existing `onload` cache
+  read (`this.data.settings = { version, ...sanitizeSettings(raw) }`) and
+  written in the existing `persist()` method — one `saveData` call still
+  covers index + clicks + settings, no new save path. Settings changes from
+  the settings tab call a new `this.plugin.saveSettings()` method that
+  updates `this.settings`, persists, and triggers `this.refreshRelatedNotes()`
+  so a `topN` change is visible immediately without reopening the panel.
+- Settings tab UI (`display()` in `FindDontSearchSettingTab`), in this order:
+  1. A `Setting` with a slider or stepper for "Related results" bound to
+     `topN` (3–15, step 1) — label copy should say "Related results" or
+     similar, not "N", to match the slogan's plain-language tone from the
+     Naming section.
+  2. A toggle "Adaptive ranking" (or similar) bound to `adaptiveBoostEnabled`,
+     with a description mentioning it boosts notes you've previously opened
+     from search or the related panel.
+  3. A "Rebuild index" button (`Setting.addButton`) that calls a new public
+     `this.plugin.rebuildIndex(): void` method — extract this from the
+     existing private `rebuild-index` command callback in `main.ts` (`() =>
+     this.enqueue(() => this.scan(true))`) so both the command and the
+     settings button share one implementation; do not duplicate the enqueue
+     call. Disable the button while `this.plugin.indexStatus === "loading"`
+     to avoid stacking rebuilds, and re-render (or just re-read status) after
+     it starts so the disabled state is visible.
+  4. A read-only status line showing `this.plugin.indexStatus` and
+     `this.plugin.index.size` (e.g. "Ready — 342 notes indexed" /
+     "Indexing…" / "Error — check the console and try Rebuild index"),
+     refreshed each time `display()` runs (Obsidian re-renders on tab open,
+     which is an acceptable refresh cadence for v1 — no live polling needed).
+- Register the tab in `main.ts#onload` via
+  `this.addSettingTab(new FindDontSearchSettingTab(this.app, this))`,
+  matching Obsidian's standard settings-tab wiring.
+- Update README.md with a manual verification section: open Settings →
+  Find, Don't Search, change "Related results" and confirm the related
+  notes panel's item count changes on next refresh; toggle "Adaptive
+  ranking" off and confirm a previously-boosted note's rank reverts to pure
+  cosine order; click "Rebuild index" and confirm the status line reflects
+  the rebuild and the existing "Rebuild index" command still works
+  identically.
+
 ## Open questions for the architect (Claude) — do not silently decide
 
 - Model and offline asset provisioning: resolved for milestone 2 below.
