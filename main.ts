@@ -4,6 +4,7 @@ import { join } from "path";
 import { configureEmbeddings, DIMENSIONS, disposeEmbeddings, embed, INDEX_MODEL } from "./src/embeddings";
 import { VectorStore, type SimilarNote } from "./src/index";
 import { RELATED_NOTES_VIEW, RelatedNotesView } from "./src/related-notes-view";
+import { SearchModal } from "./src/search-modal";
 
 const NAME = "Find, Don't Search";
 const CACHE_VERSION = 1;
@@ -26,6 +27,9 @@ export default class PluginExperiment extends Plugin {
     this.addRibbonIcon("links-coming-in", "Find, Don't Search: Open related notes", () => { void this.openRelatedNotes(); });
     // Obsidian prefixes command names with the plugin display name.
     this.addCommand({ id: "open-related-notes", name: "Open related notes", callback: () => { void this.openRelatedNotes(); } });
+    const openSearch = () => { new SearchModal(this).open(); };
+    this.addCommand({ id: "search-notes", name: "Find a note", callback: openSearch });
+    this.addRibbonIcon("search", "Find, Don't Search: Find a note", openSearch);
     // registerView lets Obsidian restore saved leaves; do not create a panel if it was closed.
     this.app.workspace.onLayoutReady(() => { if (!this.stopped) this.refreshRelatedNotes(); });
     // Queue initialization before registering events so edits during startup are replayed afterwards.
@@ -116,6 +120,16 @@ export default class PluginExperiment extends Plugin {
     else this.notice.setMessage(`${NAME}: ${message}`);
   }
 
+  /** Queries share the model's queue with indexing and shutdown. */
+  async embedQuery(query: string, isCurrent: () => boolean): Promise<number[] | undefined> {
+    const work = this.queue.then(async () => {
+      if (this.stopped || !isCurrent() || this.indexStatus !== "ready") return;
+      return embed(query);
+    });
+    this.queue = work.then(() => {}, () => {});
+    return work;
+  }
+
   private async updateNote(file: TFile, force = false): Promise<boolean> {
     if (this.stopped || file.extension !== "md" || this.app.vault.getAbstractFileByPath(file.path) !== file) return false;
     const path = file.path;
@@ -134,6 +148,7 @@ export default class PluginExperiment extends Plugin {
   }
 
   private async scan(force: boolean): Promise<void> {
+    this.indexStatus = "loading";
     const files = this.app.vault.getMarkdownFiles();
     const live = new Set(files.map(file => file.path));
     for (const path of this.index.paths()) if (!live.has(path)) this.index.removeNote(path);

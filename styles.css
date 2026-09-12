@@ -18,3 +18,5 @@
 }
 .find-related-title { flex: 1; overflow-wrap: anywhere; }
 .find-related-score { color: var(--text-muted); font-size: var(--font-ui-smaller); white-space: nowrap; }
+.find-search-title { overflow-wrap: anywhere; }
+.find-search-snippet { color: var(--text-muted); font-size: var(--font-ui-small); overflow-wrap: anywhere; }

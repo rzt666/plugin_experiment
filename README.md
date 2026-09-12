@@ -2,10 +2,11 @@
 
 **Find. Don't Search.**
 
-Milestone 3 adds **Found for you**: related notes surfaced as you move through
-your vault, backed by offline MiniLM embeddings and a persistent incremental
-index. The plugin id remains `plugin_experiment`. Search and adaptive ranking
-remain later milestones.
+**Found for you** surfaces related notes as you move through your vault.
+Milestone 4 adds **Find a note**, a semantic search modal with ranked titles
+and snippets, backed by offline MiniLM embeddings and a persistent incremental
+index. The plugin id remains `plugin_experiment`. Adaptive ranking remains a
+later milestone.
 See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Build and prepare offline assets
@@ -105,3 +106,29 @@ No automatic breaking dependency upgrades are applied.
 The panel reuses hash-validated embeddings through the existing indexing queue;
 similarity percentages are cosine scores, not confidence estimates. No click
 history is recorded. Desktop UI checks above require manual verification.
+
+## Verify semantic search (Milestone 4)
+
+1. Open the command palette → **Find, Don't Search: Find a note**, or click the
+   search ribbon icon. Confirm the placeholder reads **Find a note...**.
+2. Type a topic covered by your notes, including a paraphrase rather than an
+   exact keyword. Confirm up to ten notes appear in similarity order, with
+   basenames and first non-empty-line snippets. Check heading/list markers are
+   stripped and long snippets are truncated to 120 characters.
+3. Click a result and confirm it opens in the current leaf. Reopen the modal
+   and verify arrow-key selection and Enter also open a note.
+4. Open a note on a different topic, then invoke **Find a note** and enter an
+   exact-topic query. Confirm the active note's context does not crowd out the
+   query topic. Repeat with no active note. Context uses the cached embedding
+   captured on opening, blended with a fixed 15% weight; the query gets 85%.
+5. Type and replace queries quickly, clear the input, and close/reopen during
+   inference. Confirm old results do not replace the latest query's results.
+   Blank input shows **Nothing found yet — keep typing.** Query embedding is
+   debounced by 150 ms and serialized with indexing.
+6. Open the modal during initial indexing or Rebuild index, and in an empty
+   vault. Confirm **Index is still building…** appears without throwing. After
+   indexing completes, type again to retrieve notes. Delete/rename a candidate
+   while searching and confirm missing notes do not cause an uncaught error.
+7. Repeat a query with networking disconnected to confirm local operation.
+
+These desktop UI and relevance checks require manual verification in Obsidian.

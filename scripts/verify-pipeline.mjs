@@ -13,6 +13,9 @@ export class TFile { constructor(path, content) { this.path=path; this.extension
 export class FileSystemAdapter { getBasePath() { return '/vault'; } }
 export class Notice { constructor(text) { state.notices.push(text); } setMessage() {} hide() {} }
 export class ItemView {}
+export class SuggestModal {
+  constructor(app) { this.app=app; } setPlaceholder() {} onOpen() {} onClose() {}
+}
 export class Plugin {
   manifest={id:'plugin_experiment'};
   registerView() {} addRibbonIcon() {}
