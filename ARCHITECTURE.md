@@ -118,6 +118,50 @@ plugin_experiment/
 - Commit after each milestone with a clear message; don't squash into one
   giant commit.
 
+## Milestone 4 implementation decisions
+
+- New file `src/search-modal.ts`: a class extending Obsidian's `SuggestModal<SimilarNote>`
+  (generic type from `src/index.ts`). `getSuggestions` is async — embed the
+  query text with the existing `embed()` from `src/embeddings.ts` and rank via
+  `VectorStore.searchSimilar`, same pattern `main.ts` already uses for related
+  notes. Debounce query embedding (e.g. ~150ms) so we don't embed on every
+  keystroke; Obsidian's `SuggestModal` re-invokes `getSuggestions` on input,
+  so debounce inside the modal (cancel/ignore stale in-flight calls, resolve
+  only the latest).
+- Context-aware bias (resolves the open question in favor of option (a)):
+  when the modal opens, capture the workspace's currently active file (if
+  any) and its cached embedding from `this.index`. Blend it into the query
+  embedding as `normalize(queryEmbedding * (1 - w) + activeFileEmbedding * w)`
+  with a small fixed weight `w` (start at `0.15`) — the query still dominates.
+  If there is no active file or it isn't indexed yet, skip the blend
+  (plain query embedding). Keep the weight a named constant near the top of
+  the file so it's easy to tune later; no settings UI for it yet (milestone 6).
+- Results: top 10 candidates from `searchSimilar`, render note basename as
+  title and a snippet as the first non-empty line of the note content
+  (strip leading `#`/markdown list/heading markers), truncated to ~120 chars.
+  Reading file content for the snippet is a normal `this.plugin.app.vault
+  .cachedRead(file)` call — fine at this list size (max 10), don't cache
+  snippets in the index.
+  `onChooseSuggestion` opens the note in the current leaf (`workspace
+  .getLeaf(false).openFile(file)`), matching the related-notes panel's
+  click-to-open behavior.
+- Empty/placeholder copy should follow the slogan tone from the Naming
+  section: placeholder text "Find a note..." (not "Search..."), empty-state
+  message "Nothing found yet — keep typing." This is the fallback modal, not
+  the flagship feature, but copy should still avoid bare "Search results".
+- Register command `id: "search-notes"`, `name: "Find a note"` in
+  `main.ts`'s `onload`, alongside the existing `open-related-notes` and
+  `rebuild-index` commands. Also add a ribbon icon (`search` icon) opening
+  the same modal, mirroring the existing related-notes ribbon icon pattern.
+- If the vector index is empty or still building (`indexStatus !== "ready"`),
+  the modal should still open but show an explanatory empty state
+  ("Index is still building…") rather than throwing — don't block opening
+  the command on index readiness.
+- Update README.md with a manual verification section for this milestone
+  (open command palette → "Find a note", type a query, confirm ranked
+  results appear and clicking one opens the note; verify with an active
+  note open that context bias doesn't crowd out an exact-topic query).
+
 ## Open questions for the architect (Claude) — do not silently decide
 
 - Model and offline asset provisioning: resolved for milestone 2 below.
