@@ -73,6 +73,7 @@ export class RelatedNotesView extends ItemView {
         link.createSpan({ text: `${Math.round(score * 100)}%`, cls: "find-related-score" });
         link.addEventListener("click", event => {
           event.preventDefault();
+          this.plugin.recordClick(target.path, "related");
           void this.app.workspace.openLinkText(target.path, path, event.ctrlKey || event.metaKey);
         });
       }

@@ -5,8 +5,8 @@
 **Found for you** surfaces related notes as you move through your vault.
 Milestone 4 adds **Find a note**, a semantic search modal with ranked titles
 and snippets, backed by offline MiniLM embeddings and a persistent incremental
-index. The plugin id remains `plugin_experiment`. Adaptive ranking remains a
-later milestone.
+index. Milestone 5 adds adaptive re-ranking based on local click recency and
+frequency. The plugin id remains `plugin_experiment`.
 See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Build and prepare offline assets
@@ -105,7 +105,7 @@ No automatic breaking dependency upgrades are applied.
 
 The panel reuses hash-validated embeddings through the existing indexing queue;
 similarity percentages are cosine scores, not confidence estimates. No click
-history is recorded. Desktop UI checks above require manual verification.
+history leaves the vault. Desktop UI checks above require manual verification.
 
 ## Verify semantic search (Milestone 4)
 
@@ -132,3 +132,27 @@ history is recorded. Desktop UI checks above require manual verification.
 7. Repeat a query with networking disconnected to confirm local operation.
 
 These desktop UI and relevance checks require manual verification in Obsidian.
+
+## Verify adaptive re-ranking (Milestone 5)
+
+1. Start in a test vault with no click history. Confirm related notes and search
+   results retain their original cosine order before clicking anything.
+2. Choose a related note or search result with a slightly lower raw cosine score
+   than the leading note. Click it a few times, returning to the same original
+   note before reopening the panel or modal with the same or a similar query.
+   Confirm the clicked note moves at or near the top. Repeat for both surfaces;
+   search selection with Enter also records a click.
+3. The panel's percentages remain raw cosine similarity, so a boosted note can
+   appear above one with a marginally higher percentage. Both surfaces consider
+   20 cosine candidates, then keep five related notes or ten search results.
+4. Inspect `data.json`: `clicks.version` and `clicks.entries` live alongside
+   `index`. Each click stores only path, timestamp, and source (`search` or
+   `related`); only the latest 500 entries are retained. Disable/enable the
+   plugin and confirm the history and ranking survive without re-embedding
+   unchanged notes.
+
+Each click decays with a 14-day half-life. The summed signal is squashed and
+weighted by 0.1, so the added score stays below 0.1. Boosting is always on in
+this milestone; zero history adds zero boost. Click saves run in the background
+and do not block opening notes. These UI checks require manual verification
+in desktop Obsidian.

@@ -5,12 +5,14 @@ import { configureEmbeddings, DIMENSIONS, disposeEmbeddings, embed, INDEX_MODEL 
 import { VectorStore, type SimilarNote } from "./src/index";
 import { RELATED_NOTES_VIEW, RelatedNotesView } from "./src/related-notes-view";
 import { SearchModal } from "./src/search-modal";
+import { AdaptiveTracker, CLICKS_VERSION, rank, type ClickSource } from "./src/adaptive";
 
 const NAME = "Find, Don't Search";
 const CACHE_VERSION = 1;
 
 export default class PluginExperiment extends Plugin {
   readonly index = new VectorStore(DIMENSIONS);
+  readonly adaptive = new AdaptiveTracker();
   indexStatus: "loading" | "ready" | "error" = "loading";
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
@@ -40,6 +42,11 @@ export default class PluginExperiment extends Plugin {
       });
       if (loaded && typeof loaded === "object" && !Array.isArray(loaded)) {
         this.data = loaded as Record<string, unknown>;
+        const clicks = this.data.clicks as { version?: number; entries?: unknown } | undefined;
+        if (clicks?.version === CLICKS_VERSION) {
+          const rejected = this.adaptive.restore(clicks.entries);
+          if (rejected) console.warn(`${NAME}: discarded ${rejected} invalid click entries`);
+        }
         const cache = this.data.index as { version?: number; model?: string; notes?: unknown } | undefined;
         if (cache?.version === CACHE_VERSION && cache.model === INDEX_MODEL) {
           const rejected = this.index.restore(cache.notes);
@@ -105,8 +112,8 @@ export default class PluginExperiment extends Plugin {
       if (!await this.updateNote(file)) return;
       await this.persist();
       const entry = this.index.get(file.path);
-      if (entry) results = this.index.searchSimilar(entry.embedding, 6)
-        .filter(note => note.path !== file.path).slice(0, 5);
+      if (entry) results = rank(this.index.searchSimilar(entry.embedding, 20)
+        .filter(note => note.path !== file.path), this.adaptive, 5);
     });
     this.queue = work.catch(() => {});
     await work;
@@ -176,7 +183,15 @@ export default class PluginExperiment extends Plugin {
     if (this.stopped) return;
     await this.saveData({ ...this.data, index: {
       version: CACHE_VERSION, model: INDEX_MODEL, notes: this.index.toJSON(),
-    } });
+    }, clicks: { version: CLICKS_VERSION, entries: this.adaptive.toJSON() } });
+  }
+
+  recordClick(path: string, source: ClickSource): void {
+    if (this.stopped) return;
+    this.adaptive.record(path, source);
+    this.queue = this.queue.then(() => this.persist()).catch((error: unknown) => {
+      console.error(`${NAME}: could not save click history`, error);
+    });
   }
 
   onunload(): void {

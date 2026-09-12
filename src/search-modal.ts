@@ -1,6 +1,7 @@
 import { Notice, SuggestModal, TFile } from "obsidian";
 import type PluginExperiment from "../main";
 import type { SimilarNote } from "./index";
+import { rank } from "./adaptive";
 
 const CONTEXT_WEIGHT = 0.15;
 const DEBOUNCE_MS = 150;
@@ -72,7 +73,8 @@ export class SearchModal extends SuggestModal<SimilarNote> {
         ? embedding.map((value, i) => value * (1 - CONTEXT_WEIGHT) + this.context![i] * CONTEXT_WEIGHT)
         : embedding;
       const norm = Math.hypot(...blended);
-      const notes = this.plugin.index.searchSimilar(blended.map(value => value / norm), 10);
+      const notes = rank(this.plugin.index.searchSimilar(blended.map(value => value / norm), 20),
+        this.plugin.adaptive, 10);
       const snippets = new Map<string, string>();
       const available = await Promise.all(notes.map(async note => {
         const file = this.app.vault.getAbstractFileByPath(note.path);
@@ -109,6 +111,7 @@ export class SearchModal extends SuggestModal<SimilarNote> {
   onChooseSuggestion(note: SimilarNote): void {
     const file = this.app.vault.getAbstractFileByPath(note.path);
     if (!(file instanceof TFile)) return;
+    this.plugin.recordClick(note.path, "search");
     void this.app.workspace.getLeaf(false).openFile(file).catch(error => {
       console.error("Find, Don't Search: could not open note", error);
       new Notice("Couldn't open this note. It may have moved or been deleted.");
