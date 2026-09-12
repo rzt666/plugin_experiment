@@ -1,0 +1,19 @@
+{
+  "name": "plugin_experiment",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Experimental Obsidian plugin scaffold.",
+  "main": "main.js",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node esbuild.config.mjs production"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.2",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.13.1",
+    "typescript": "^5.9.3"
+  }
+}

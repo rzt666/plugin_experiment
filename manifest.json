@@ -1,0 +1,9 @@
+{
+  "id": "plugin_experiment",
+  "name": "Plugin Experiment",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Experimental Obsidian plugin scaffold.",
+  "author": "Avare Agency",
+  "isDesktopOnly": true
+}
