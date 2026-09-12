@@ -6,7 +6,8 @@
 Milestone 4 adds **Find a note**, a semantic search modal with ranked titles
 and snippets, backed by offline MiniLM embeddings and a persistent incremental
 index. Milestone 5 adds adaptive re-ranking based on local click recency and
-frequency. The plugin id remains `plugin_experiment`.
+frequency. Milestone 6 adds settings for result counts, adaptive ranking, and
+index rebuilding with status. The plugin id remains `plugin_experiment`.
 See [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ## Build and prepare offline assets
@@ -112,7 +113,8 @@ history leaves the vault. Desktop UI checks above require manual verification.
 1. Open the command palette → **Find, Don't Search: Find a note**, or click the
    search ribbon icon. Confirm the placeholder reads **Find a note...**.
 2. Type a topic covered by your notes, including a paraphrase rather than an
-   exact keyword. Confirm up to ten notes appear in similarity order, with
+   exact keyword. Confirm up to the configured number of notes (five by default)
+   appear in similarity order, with
    basenames and first non-empty-line snippets. Check heading/list markers are
    stripped and long snippets are truncated to 120 characters.
 3. Click a result and confirm it opens in the current leaf. Reopen the modal
@@ -144,7 +146,8 @@ These desktop UI and relevance checks require manual verification in Obsidian.
    search selection with Enter also records a click.
 3. The panel's percentages remain raw cosine similarity, so a boosted note can
    appear above one with a marginally higher percentage. Both surfaces consider
-   20 cosine candidates, then keep five related notes or ten search results.
+   `Math.max(20, topN * 4)` cosine candidates, then keep the configured number
+   of results on both surfaces (five by default).
 4. Inspect `data.json`: `clicks.version` and `clicks.entries` live alongside
    `index`. Each click stores only path, timestamp, and source (`search` or
    `related`); only the latest 500 entries are retained. Disable/enable the
@@ -152,7 +155,37 @@ These desktop UI and relevance checks require manual verification in Obsidian.
    unchanged notes.
 
 Each click decays with a 14-day half-life. The summed signal is squashed and
-weighted by 0.1, so the added score stays below 0.1. Boosting is always on in
-this milestone; zero history adds zero boost. Click saves run in the background
+weighted by 0.1, so the added score stays below 0.1. Boosting is on by default
+and can be disabled in settings; zero history adds zero boost. Click saves run in the background
 and do not block opening notes. These UI checks require manual verification
+in desktop Obsidian.
+
+## Verify settings (Milestone 6)
+
+1. Open **Settings → Find, Don't Search**. Confirm **Related results** defaults
+   to five and **Adaptive ranking** is enabled. With at least 16 Markdown notes
+   indexed, change Related results to 3, then 15. Confirm the related panel's
+   item count changes on the next refresh without reopening it. Open **Find a
+   note**, enter a query, and confirm it uses the same configured result count.
+2. Using the previously-clicked note from Milestone 5, return to the same
+   original note and toggle **Adaptive ranking** off. Confirm the related
+   panel returns to pure cosine order (descending similarity percentages).
+   Repeat the same query in Find a note and confirm the click boost disappears.
+   The active-note query blend remains in effect. Enable the toggle again and
+   confirm the saved click history still affects ranking.
+3. Click **Rebuild index**. Confirm the button immediately disables and the
+   status line shows **Indexing…** with the indexed-note count. After the
+   completion notice, close and reopen the settings tab; confirm **Ready** and
+   the current count appear and the button is enabled. Status refreshes when
+   the tab opens; no live polling is used. Run the existing **Find, Don't
+   Search: Rebuild index** command and confirm it forces the same rebuild.
+4. Disable/enable the plugin and confirm both settings survive. Inspect
+   `data.json`: `settings` contains `version: 1`, `topN`, and
+   `adaptiveBoostEnabled` alongside the existing `index` and `clicks` data.
+   With the plugin disabled, set `topN` to an invalid value such as 16 and
+   `adaptiveBoostEnabled` to `false`. Enable the plugin and confirm only the
+   result count falls back to five. Repeat with a valid count and an invalid
+   toggle value; only the toggle should fall back to enabled.
+
+These settings, navigation, and relevance checks require manual verification
 in desktop Obsidian.

@@ -19,7 +19,7 @@ export class SearchModal extends SuggestModal<SimilarNote> {
     super(plugin.app);
     this.setPlaceholder("Find a note...");
     this.emptyStateText = EMPTY_TEXT;
-    this.limit = 10;
+    this.limit = this.plugin.settings.topN;
   }
 
   onOpen(): void {
@@ -73,8 +73,10 @@ export class SearchModal extends SuggestModal<SimilarNote> {
         ? embedding.map((value, i) => value * (1 - CONTEXT_WEIGHT) + this.context![i] * CONTEXT_WEIGHT)
         : embedding;
       const norm = Math.hypot(...blended);
-      const notes = rank(this.plugin.index.searchSimilar(blended.map(value => value / norm), 20),
-        this.plugin.adaptive, 10);
+      const { topN, adaptiveBoostEnabled } = this.plugin.settings;
+      this.limit = topN;
+      const notes = rank(this.plugin.index.searchSimilar(blended.map(value => value / norm), Math.max(20, topN * 4)),
+        this.plugin.adaptive, topN, adaptiveBoostEnabled);
       const snippets = new Map<string, string>();
       const available = await Promise.all(notes.map(async note => {
         const file = this.app.vault.getAbstractFileByPath(note.path);

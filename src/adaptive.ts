@@ -50,8 +50,8 @@ export class AdaptiveTracker {
   }
 }
 
-export function rank(candidates: SimilarNote[], tracker: AdaptiveTracker, topN: number): SimilarNote[] {
-  return candidates.map(note => ({ note, finalScore: note.score + BOOST_WEIGHT * tracker.boost(note.path) }))
+export function rank(candidates: SimilarNote[], tracker: AdaptiveTracker, topN: number, enabled = true): SimilarNote[] {
+  return candidates.map(note => ({ note, finalScore: note.score + (enabled ? BOOST_WEIGHT * tracker.boost(note.path) : 0) }))
     .sort((a, b) => b.finalScore - a.finalScore)
     .slice(0, topN).map(({ note }) => note);
 }

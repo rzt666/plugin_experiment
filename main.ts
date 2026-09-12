@@ -6,6 +6,7 @@ import { VectorStore, type SimilarNote } from "./src/index";
 import { RELATED_NOTES_VIEW, RelatedNotesView } from "./src/related-notes-view";
 import { SearchModal } from "./src/search-modal";
 import { AdaptiveTracker, CLICKS_VERSION, rank, type ClickSource } from "./src/adaptive";
+import { DEFAULT_SETTINGS, FindDontSearchSettingTab, sanitizeSettings, SETTINGS_VERSION, type PluginSettings } from "./src/settings";
 
 const NAME = "Find, Don't Search";
 const CACHE_VERSION = 1;
@@ -13,6 +14,7 @@ const CACHE_VERSION = 1;
 export default class PluginExperiment extends Plugin {
   readonly index = new VectorStore(DIMENSIONS);
   readonly adaptive = new AdaptiveTracker();
+  settings: PluginSettings = { ...DEFAULT_SETTINGS };
   indexStatus: "loading" | "ready" | "error" = "loading";
   private queue: Promise<void> = Promise.resolve();
   private stopped = false;
@@ -53,6 +55,9 @@ export default class PluginExperiment extends Plugin {
           if (rejected) console.warn(`${NAME}: discarded ${rejected} invalid cached entries`);
         }
       }
+      this.settings = sanitizeSettings(this.data.settings);
+      this.data.settings = { version: SETTINGS_VERSION, ...this.settings };
+      this.addSettingTab(new FindDontSearchSettingTab(this.app, this));
       await this.scan(false);
     });
     const update = (file: TFile) => this.enqueue(async () => {
@@ -70,9 +75,21 @@ export default class PluginExperiment extends Plugin {
     })));
     // Folder renames can change many note paths without create/delete events.
     this.registerEvent(this.app.vault.on("rename", () => this.enqueue(() => this.scan(false))));
-    this.addCommand({ id: "rebuild-index", name: "Rebuild index", callback: () => {
-      this.enqueue(() => this.scan(true));
-    } });
+    this.addCommand({ id: "rebuild-index", name: "Rebuild index", callback: () => this.rebuildIndex() });
+  }
+
+  rebuildIndex(): void {
+    if (this.stopped || this.indexStatus === "loading") return;
+    this.indexStatus = "loading";
+    this.enqueue(() => this.scan(true));
+  }
+
+  async saveSettings(settings: PluginSettings = this.settings): Promise<void> {
+    this.settings = sanitizeSettings(settings);
+    const work = this.queue.then(() => this.persist());
+    this.queue = work.catch(() => {});
+    try { await work; }
+    finally { this.refreshRelatedNotes(); }
   }
 
   private enqueue(work: () => Promise<void>): void {
@@ -112,8 +129,9 @@ export default class PluginExperiment extends Plugin {
       if (!await this.updateNote(file)) return;
       await this.persist();
       const entry = this.index.get(file.path);
-      if (entry) results = rank(this.index.searchSimilar(entry.embedding, 20)
-        .filter(note => note.path !== file.path), this.adaptive, 5);
+      const { topN, adaptiveBoostEnabled } = this.settings;
+      if (entry) results = rank(this.index.searchSimilar(entry.embedding, Math.max(20, topN * 4))
+        .filter(note => note.path !== file.path), this.adaptive, topN, adaptiveBoostEnabled);
     });
     this.queue = work.catch(() => {});
     await work;
@@ -181,6 +199,7 @@ export default class PluginExperiment extends Plugin {
 
   private async persist(): Promise<void> {
     if (this.stopped) return;
+    this.data.settings = { version: SETTINGS_VERSION, ...this.settings };
     await this.saveData({ ...this.data, index: {
       version: CACHE_VERSION, model: INDEX_MODEL, notes: this.index.toJSON(),
     }, clicks: { version: CLICKS_VERSION, entries: this.adaptive.toJSON() } });

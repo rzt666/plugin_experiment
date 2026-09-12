@@ -13,12 +13,15 @@ export class TFile { constructor(path, content) { this.path=path; this.extension
 export class FileSystemAdapter { getBasePath() { return '/vault'; } }
 export class Notice { constructor(text) { state.notices.push(text); } setMessage() {} hide() {} }
 export class ItemView {}
+export class PluginSettingTab { constructor(app, plugin) { this.app=app; } }
+export class Setting {}
 export class SuggestModal {
   constructor(app) { this.app=app; } setPlaceholder() {} onOpen() {} onClose() {}
 }
 export class Plugin {
   manifest={id:'plugin_experiment'};
   registerView() {} addRibbonIcon() {}
+  addSettingTab(tab) { this.settingTab=tab; }
   registerEvent() {} addCommand(command) { this.command=command; }
   async loadData() { return state.saved; }
   async saveData(value) { state.saved=JSON.parse(JSON.stringify(value)); }
@@ -26,7 +29,7 @@ export class Plugin {
 `;
 try {
   const bundle = join(temporary, "pipeline.cjs");
-  await build({ stdin: { contents: 'export {default as Pipeline} from "./main"; export {TFile,FileSystemAdapter} from "obsidian";', resolveDir: process.cwd(), loader: "ts" },
+  await build({ stdin: { contents: 'export {default as Pipeline} from "./main"; export {TFile,FileSystemAdapter} from "obsidian"; export {sanitizeSettings} from "./src/settings"; export {rank} from "./src/adaptive";', resolveDir: process.cwd(), loader: "ts" },
     bundle: true, platform: "node", format: "cjs", outfile: bundle,
     plugins: [{ name: "mocks", setup(build) {
       build.onResolve({ filter: /^obsidian$/ }, () => ({path:"obsidian",namespace:"mock"}));
@@ -40,7 +43,17 @@ try {
           return Array.from({length:384},(_,i)=>i===0?1:text.length/100);
         }` }));
     } }] });
-  const { Pipeline, TFile, FileSystemAdapter } = createRequire(import.meta.url)(bundle);
+  const { Pipeline, TFile, FileSystemAdapter, sanitizeSettings, rank } = createRequire(import.meta.url)(bundle);
+  for (const topN of [2, 16, 3.5, NaN, Infinity, '5', null]) {
+    assert.deepEqual(sanitizeSettings({topN, adaptiveBoostEnabled:false}), {topN:5, adaptiveBoostEnabled:false});
+  }
+  for (const value of [null, [], 'settings']) {
+    assert.deepEqual(sanitizeSettings(value), {topN:5, adaptiveBoostEnabled:true});
+  }
+  assert.deepEqual(sanitizeSettings({topN:15, adaptiveBoostEnabled:'false'}), {topN:15, adaptiveBoostEnabled:true});
+  const candidates=[{path:'boosted.md',score:0.8},{path:'cosine.md',score:0.85}];
+  assert.equal(rank(candidates,{boost() { throw new Error('disabled ranking must not call boost'); }},2,false)[0].path,'cosine.md');
+  assert.equal(rank(candidates,{boost:path=>path==='boosted.md'?0.9:0},2)[0].path,'boosted.md');
   const files = new Map();
   const handlers = new Map();
   const vault = { adapter: new FileSystemAdapter(), configDir:'.obsidian',
@@ -71,17 +84,25 @@ try {
   assert.equal(related.length,5,'panel receives five other notes');
   assert(related.every(note=>note.path!==first.path),'active note excluded');
   assert.equal(state.calls,cachedCalls,'related notes reuse current cached embedding');
+  await plugin.saveSettings({topN:3,adaptiveBoostEnabled:false});
+  assert.equal((await plugin.relatedNotes(first)).length,3,'settings change panel count');
+  assert.deepEqual(state.saved.settings,{version:1,topN:3,adaptiveBoostEnabled:false});
+  plugin.onunload(); await plugin.queue;
+  plugin=await start();
+  assert.deepEqual(plugin.settings,{topN:3,adaptiveBoostEnabled:false},'settings survive restart');
   first.content='new content before modify event';
   await plugin.relatedNotes(first);
   assert.equal(state.calls,cachedCalls+1,'related notes validate content hash');
   for (const [path,note] of files) if (note!==first) { files.delete(path); await emit(plugin,'delete',note); }
   assert.deepEqual(await plugin.relatedNotes(first),[],'single note has no related notes');
-  const before=state.calls; plugin.command.callback(); await plugin.queue;
+  const before=state.calls; plugin.command.callback();
+  assert.equal(plugin.indexStatus,'loading','rebuild status changes synchronously');
+  plugin.rebuildIndex(); await plugin.queue;
   assert.equal(state.calls,before+1,'rebuild forces embedding');
   state.duringEmbed=()=>{ files.delete(first.path); handlers.get('delete')(first); state.duringEmbed=undefined; };
   first.content='deleted during embedding'; await emit(plugin,'modify',first); await plugin.queue;
   assert.equal(plugin.index.size,0,'in-flight embedding cannot resurrect a deleted note');
   assert.equal(Object.keys(state.saved.index.notes).length,0);
   plugin.onunload(); await plugin.queue;
-  console.log('PASS: startup, cache reuse, mtime/hash changes, create/modify/delete/rename, rebuild, deletion race, persistence.');
+  console.log('PASS: startup, cache reuse, mtime/hash changes, create/modify/delete/rename, rebuild, deletion race, persistence, settings validation/restart/result count, disabled boost.');
 } finally { delete globalThis.__indexTest; await rm(temporary,{recursive:true,force:true}); }
