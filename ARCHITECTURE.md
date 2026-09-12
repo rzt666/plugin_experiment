@@ -162,6 +162,56 @@ plugin_experiment/
   results appear and clicking one opens the note; verify with an active
   note open that context bias doesn't crowd out an exact-topic query).
 
+## Milestone 5 implementation decisions
+
+- New file `src/adaptive.ts`, no new persistence file — click history lives
+  under `data.json` alongside the existing `index` key so `main.ts` keeps one
+  save path. Add `AdaptiveTracker` class: `record(path, source)` appends
+  `{ path, timestamp: Date.now(), source }` (`source: "search" | "related"`)
+  to an in-memory array capped at the most recent 500 entries (drop oldest on
+  overflow — this is a lightweight signal, not an audit log). `toJSON()` /
+  `restore(entries)` mirror `VectorStore`'s pattern (version-tagged, reject
+  malformed entries rather than throw). Bump a `CACHE_VERSION`-style
+  `clicks.version` field independent of the index's, so future format changes
+  don't force a full re-embed.
+- Boost math lives in `AdaptiveTracker.boost(path): number`: exponential
+  recency decay per click, half-life 14 days
+  (`Math.pow(0.5, ageMs / (14 * 86400000))`), summed across all matching
+  clicks for that path, then squashed with `boost / (boost + 1)` so it's
+  bounded in `[0, 1)` regardless of click count (no unbounded runaway from a
+  note clicked hundreds of times). No tag/folder affinity in v1 — the
+  Non-goals section already caps ambition at a simple weighted boost;
+  revisit shared-tag/folder bonus only if plain recency+frequency proves
+  insufficient after real use.
+- Applying the boost: new `rank(candidates, tracker, topN)` helper in
+  `adaptive.ts` takes the *wider* candidate list already sorted by cosine
+  similarity, computes `finalScore = cosineScore + BOOST_WEIGHT *
+  tracker.boost(path)` with `BOOST_WEIGHT = 0.1` (named constant, tunable
+  later; cosine still dominates ranking), re-sorts, then slices to `topN`.
+  Callers must over-fetch from `VectorStore.searchSimilar` (e.g. ask for 20
+  when they need 5-10 final results) so a boosted note ranked outside the
+  raw cosine top-N can still surface — this changes both `main.ts
+  .relatedNotes` (fetch 20, keep top 5) and `search-modal.ts`'s `find`
+  (fetch 20, keep top 10).
+- Recording clicks: `main.ts` owns one `AdaptiveTracker` instance
+  (`this.adaptive`) alongside `this.index`, persisted in the same
+  `persist()` call. Add `recordClick(path: string, source: "search" |
+  "related")` on the plugin that appends and persists (fire-and-forget,
+  don't block navigation on the save). Call it from
+  `search-modal.ts#onChooseSuggestion` (source `"search"`) and
+  `related-notes-view.ts`'s link click handler (source `"related"`) —
+  record before or alongside opening the note, never gate the navigation on
+  it succeeding.
+- No settings toggle yet (milestone 6 adds "toggle context-aware boosting");
+  for milestone 5 the boost is unconditionally on once there's any click
+  history — with zero history `tracker.boost` returns 0 for every path so
+  ranking is identical to pre-milestone-5 behavior, which doubles as the
+  simplest manual verification.
+- Update README.md with a manual verification section: click a related note
+  or search result a few times, reopen the panel/modal with a similar query,
+  and confirm the previously-clicked note now ranks at or near the top even
+  when another note has marginally higher raw cosine similarity.
+
 ## Open questions for the architect (Claude) — do not silently decide
 
 - Model and offline asset provisioning: resolved for milestone 2 below.
