@@ -1,4 +1,5 @@
 import esbuild from "esbuild";
+import { transformersPlugin } from "./scripts/transformers-build.mjs";
 import { builtinModules } from "node:module";
 
 const production = process.argv[2] === "production";
@@ -6,6 +7,8 @@ const production = process.argv[2] === "production";
 const context = await esbuild.context({
   entryPoints: ["main.ts"],
   bundle: true,
+  platform: "node",
+  plugins: [transformersPlugin],
   external: [
     "obsidian",
     "electron",

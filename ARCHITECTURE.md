@@ -120,8 +120,35 @@ plugin_experiment/
 
 ## Open questions for the architect (Claude) — do not silently decide
 
-- Exact embedding model name/size to bundle vs download-on-first-use.
+- Model and offline asset provisioning: resolved for milestone 2 below.
 - Whether "context-aware" in v1 should bias search by (a) currently open
   note content, (b) recent note history, or (c) both — Codex should
   implement (a) first as the simplest defensible interpretation unless
   told otherwise.
+
+## Milestone 2 implementation decisions
+
+- The requested MiniLM example is now the concrete model:
+  `Xenova/all-MiniLM-L6-v2`, quantized ONNX, revision
+  `751bff37182d3f1213fa05d7196b954e230abad9`, mean pooling and normalization
+  (384 dimensions). Bump the cache model fingerprint if assets or preprocessing
+  change. Long notes use tokenizer truncation; chunking is deferred.
+- Resolve the earlier bundle-vs-download question in favor of **bundled local
+  assets**, to meet the explicit fully-offline requirement even on first use.
+  `npm run prepare:model` downloads assets at packaging time; copy generated
+  `models/` and `wasm/` with the plugin. Runtime remote loading is disabled.
+  Missing assets fail visibly, with no download fallback.
+- esbuild substitutes Transformers.js's environment-selected ONNX backend with
+  ONNX Runtime Web's Node-compatible WASM build, isolates that runtime from
+  browser globals, and excludes the unused sharp image backend. Electron exposes
+  both browser and Node APIs: default selection would require native ONNX,
+  while the browser-only WASM build contains filesystem stubs. The adapter keeps
+  inference in WASM and file loading local, with one thread.
+- The index uses a Map keyed by path and linear cosine ranking. Cache data lives
+  under `data.json.index` with a schema version and model fingerprint. Hashes are
+  checked even when mtime matches; unchanged content reuses its embedding.
+- Add rename handling alongside create/modify/delete because Obsidian renames
+  do not necessarily emit those events, including folder moves. Work and saves
+  are serialized, with shutdown and stale-result guards.
+- Expose **Find, Don't Search: Rebuild index** for milestone verification.
+  No settings tab, related-notes panel, or search UI is included.

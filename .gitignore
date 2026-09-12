@@ -3,3 +3,5 @@ main.js
 main.js.map
 *.tsbuildinfo
 .DS_Store
+models/
+wasm/
