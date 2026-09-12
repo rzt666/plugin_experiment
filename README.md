@@ -1,4 +1,6 @@
-# Plugin Experiment
+# Find, Don't Search
+
+**Find. Don't Search.**
 
 Milestone 1: a desktop Obsidian plugin scaffold that logs when enabled and
 disabled. Embeddings, indexing, search, and related notes are not implemented.
@@ -31,10 +33,10 @@ Use `npm run dev` to rebuild on source changes (bundling only), and
 2. Create `<test-vault>/.obsidian/plugins/plugin_experiment/` and copy
    `manifest.json`, the built `main.js`, and `styles.css` into that folder.
 3. In **Settings → Community plugins**, turn off Restricted mode if needed.
-   Restart Obsidian, then enable **Plugin Experiment** in the installed list.
+   Restart Obsidian, then enable **Find, Don't Search** in the installed list.
 4. Open developer tools with **Cmd+Option+I** on macOS or **Ctrl+Shift+I** on
-   Windows/Linux. In the Console, confirm `Plugin Experiment loaded` appears.
-5. Disable the plugin and confirm `Plugin Experiment unloaded` appears.
+   Windows/Linux. In the Console, confirm `Find, Don't Search — loaded` appears.
+5. Disable the plugin and confirm `Find, Don't Search — unloaded` appears.
 
 After rebuilding, copy the updated files into the test vault and disable/enable
 the plugin to reload it. No commands or other UI are expected in this milestone.

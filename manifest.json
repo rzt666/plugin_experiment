@@ -1,9 +1,9 @@
 {
   "id": "plugin_experiment",
-  "name": "Plugin Experiment",
+  "name": "Find, Don't Search",
   "version": "0.1.0",
   "minAppVersion": "1.0.0",
-  "description": "Experimental Obsidian plugin scaffold.",
+  "description": "Find. Don't Search. Context-aware semantic search and related notes for Obsidian.",
   "author": "Avare Agency",
   "isDesktopOnly": true
 }

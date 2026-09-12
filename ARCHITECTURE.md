@@ -5,6 +5,22 @@ implements against this spec. Codex should update this file if it deviates
 from the plan, and ask (stop and report) rather than guess on ambiguous product
 decisions.
 
+## Slogan / product identity
+
+**"Find. Don't Search."**
+
+This is the guiding UX principle, not just marketing copy:
+- The plugin should surface relevant notes proactively (related notes panel,
+  context-aware ranking) so the user finds what they need without typing a
+  query — search is the fallback, not the primary interaction.
+- Copy in the UI (command names, empty states, settings descriptions) should
+  reflect this: favor language like "Related", "Surfaced", "Found for you"
+  over generic "Search results". The search modal is still needed (v1
+  milestone 4) but the related-notes panel (milestone 3) is the flagship
+  feature expressing the slogan and should not be deprioritized as "just a
+  sidebar".
+- Plugin display name should incorporate this identity — see naming below.
+
 ## Product summary
 
 An Obsidian plugin providing:
@@ -30,6 +46,14 @@ An Obsidian plugin providing:
   sufficient for v1.
 - No mobile support requirement for v1 (desktop Obsidian only is fine to
   start; note if transformers.js/WASM works on mobile but don't block on it).
+
+## Naming
+
+- Plugin `id` in manifest.json stays `plugin_experiment` (repo/id already
+  fixed, don't rename mid-build — Obsidian plugin IDs are hard to migrate).
+- Plugin `name` (display name shown in Obsidian's UI) should be **"Find,
+  Don't Search"**.
+- README title and top tagline should use the slogan.
 
 ## Tech stack
 
